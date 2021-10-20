@@ -75,9 +75,9 @@ contract LeafcoinFactory is Ownable   {
             factories[_address].totalShares += _shares[i];
         }
         
-        // La part du client est stockée
+       
         factories[_address].totalShares += _clientShares;
-        factories[_address].clientShares = _clientShares; 
+        factories[_address].clientShares = _clientShares;  // CLient shares stores separatly 
        
     }
     
@@ -106,11 +106,10 @@ contract LeafcoinFactory is Ownable   {
         {
             uint256 amountTo = _amount * factory.shares[i] / factory.totalShares;
             
-            // Si c'est une cooperative, on mine sur le contrat (appel ultérieur à dispatchToPeasants )
+            // Si c'est une cooperative, on la crédite ici, les paysans seont mine sur dispatchToPeasants 
             if (cooperatives[factory.payees[i]].totalBring > 0)
             {
-              //  _dispatchToPeasants (factory.payees[i], amountTo, _amount );
-              
+
                cooperatives[factory.payees[i]].credit += amountTo;
                cooperatives[factory.payees[i]].totalMint += _amount;
             }

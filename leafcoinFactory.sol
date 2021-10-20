@@ -5,14 +5,15 @@ pragma solidity ^0.8.1;
 import "https://github.com/OpenZeppelin/openzeppelin-contracts/blob/master/contracts/token/ERC20/presets/ERC20PresetMinterPauser.sol";
 import "https://github.com/OpenZeppelin/openzeppelin-contracts/blob/master/contracts/access/Ownable.sol";
 //import "https://github.com/OpenZeppelin/openzeppelin-contracts/blob/master/contracts/token/ERC20/utils/SafeERC20.sol";
-import "hardhat/console.sol";
 
 contract LeafcoinFactory is Ownable   {
  
     ERC20PresetMinterPauser private _token;
   
+    
     struct Cooperative {
-        uint totalBring;
+        uint256 totalBring;
+        uint256 totalMint;
         uint256 credit;    // incremented for each product mint event
         address[] peasants;
         //uint256[] brings;
@@ -21,8 +22,8 @@ contract LeafcoinFactory is Ownable   {
     }
     
     struct Factory {
-        uint totalShares;
-        uint clientShares;
+        uint256 totalShares;
+        uint256 clientShares;
         address[] payees;     // cooperative is one of the payees
         uint256[] shares;
         uint256 allowance;    // incremented for each material delivery (in leafcoin)
@@ -109,6 +110,7 @@ contract LeafcoinFactory is Ownable   {
               //  _dispatchToPeasants (factory.payees[i], amountTo, _amount );
               
                cooperatives[factory.payees[i]].credit += amountTo;
+               cooperatives[factory.payees[i]].totalMint += _amount;
             }
                
             // Sinon, on mine directement dans le portefeuille du beneficiaire
@@ -162,6 +164,7 @@ contract LeafcoinFactory is Ownable   {
         
         require(_cooperative != address(0), "dispatchToPeasants: invalid cooperative address");
         require(cooperatives[_cooperative].totalBring > 0, "dispatchToPeasants: unknown cooperative");
+        require(cooperatives[_cooperative].totalMint > 0, "dispatchToPeasants: unknown cooperative");
         
         uint256 credit = cooperatives[_cooperative].credit;
         require(credit > 0,"dispatchToPeasants: cooperative balance = 0" );
@@ -170,18 +173,23 @@ contract LeafcoinFactory is Ownable   {
         // factories[_address].payees = new Payee[](_payees.length); //= Filliere( new Payee[](_payees.length), 0);
        // Cooperative storage cooperative = cooperatives[_cooperative];
        
+       
          // For each payee of the cooperative contract transfer leafcoins according to shares
         for (uint i = 0; i < cooperatives[_cooperative].peasants.length; i++) 
         {
             address peasant = cooperatives[_cooperative].peasants[i];
             uint256 amountTo = credit * cooperatives[_cooperative].brings[peasant] / cooperatives[_cooperative].totalBring;
-            cooperatives[_cooperative].brings[peasant] = 0;
+            uint256 used = cooperatives[_cooperative].brings[peasant] * cooperatives[_cooperative].totalMint / cooperatives[_cooperative].totalBring;
+            
+            cooperatives[_cooperative].brings[peasant] -= used;
+          
+            /// Minage dans le portefeuille des paysans
             _token.mint(cooperatives[_cooperative].peasants[i], amountTo );
             
         }
         cooperatives[_cooperative].credit = 0;
-        cooperatives[_cooperative].totalBring = 0;
-        
+        cooperatives[_cooperative].totalBring -= cooperatives[_cooperative].totalMint;
+        cooperatives[_cooperative].totalMint = 0;
         
     }
     

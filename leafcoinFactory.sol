@@ -1,29 +1,39 @@
 // SPDX-License-Identifier: UNLICENSED
+/// @author Leafter team 
 
 pragma solidity ^0.8.1;
 
 import "https://github.com/OpenZeppelin/openzeppelin-contracts/blob/master/contracts/token/ERC20/presets/ERC20PresetMinterPauser.sol";
 import "https://github.com/OpenZeppelin/openzeppelin-contracts/blob/master/contracts/access/Ownable.sol";
-//import "https://github.com/OpenZeppelin/openzeppelin-contracts/blob/master/contracts/token/ERC20/utils/SafeERC20.sol";
 
+
+/**
+ * @dev This contract is the core of Leafter :
+ * Factory Setup is called for each affiliate product
+ * Peasents brings material to cooperatives. That grants factory allowance to mint tokens
+ * Factory production => Mint tokens
+ * Dispatch to peasants once per season (shares = brings)
+ * 
+ * IMPORTANT : The contract must be granted a MINTER Role by the token role = 0x9F2DF0FED2C77648DE5860A4CC508CD0818C85B8B8A1AB4CEEEF8D981C8956A6
+ */
 contract LeafcoinFactory is Ownable   {
  
+    
     ERC20PresetMinterPauser private _token;
   
     
     struct Cooperative {
-        uint256 totalBring;
-        uint256 totalMint;
-        uint256 credit;    // incremented for each product mint event
-        address[] peasants;
-        //uint256[] brings;
+        uint256 totalBring;  // incremented for peasant meterial bring
+        uint256 totalMint;   // incremented for each product mint. Zeroed when dispatch to peasants occures
+        uint256 credit;      // incremented for each product mint event according to cooperative shares in factory
+        address[] peasants;  // keep tracks of peasants that brings material to cooperative 
         mapping(address => uint256) brings;  // incremented for each peasant delivery (in leafcoin)
  
     }
     
     struct Factory {
         uint256 totalShares;
-        uint256 clientShares;
+        uint256 clientShares; // client shares is fixed but cannot be passed inside array
         address[] payees;     // cooperative is one of the payees
         uint256[] shares;
         uint256 allowance;    // incremented for each material delivery (in leafcoin)
@@ -34,6 +44,7 @@ contract LeafcoinFactory is Ownable   {
     mapping(address => Factory) public factories;
     mapping(address => Cooperative) public cooperatives;
 
+    //--------------------------------------------------------------------------
     constructor ( ERC20PresetMinterPauser token ) {
          _token = token;
     }
@@ -48,12 +59,12 @@ contract LeafcoinFactory is Ownable   {
      */
     function setupFactory (address _address, address[] memory _payees, uint256[] memory _shares, uint256 _clientShares)  public onlyOwner
     {
-       
+        require(_address != address(0), "setupFactory: null factory address");
         require(_payees.length == _shares.length, "setupFactory: payees and shares length mismatch");
         require(_payees.length > 0, "setupFactory: no payees");
     
            
-       // factories[_address].payees = new Payee[](_payees.length); //= Filliere( new Payee[](_payees.length), 0);
+        // Init factory 
         factories[_address].totalShares = 0;
         factories[_address].payees = _payees; 
         factories[_address].shares = _shares; 
@@ -142,9 +153,6 @@ contract LeafcoinFactory is Ownable   {
        
     }
     
-    
-  
-    
     /*
      * @dev Dispatch cooperative credits to material bringers
      * @param _cooperative The eth address of the cooperative 
@@ -152,20 +160,17 @@ contract LeafcoinFactory is Ownable   {
     function dispatchToPeasants (address _cooperative) public onlyOwner
     {
        
-        
+        // Note : this method must be called at the end of the season when every peasan has finish to bring materials
         require(_cooperative != address(0), "dispatchToPeasants: invalid cooperative address");
         require(cooperatives[_cooperative].totalBring > 0, "dispatchToPeasants: unknown cooperative");
         require(cooperatives[_cooperative].totalMint > 0, "dispatchToPeasants: unknown cooperative");
         
         uint256 credit = cooperatives[_cooperative].credit;
         require(credit > 0,"dispatchToPeasants: cooperative balance = 0" );
-      //  require(_token.balanceOf(address(this)) > credit, "dispatchToPeasants: not enough token on contract for dispatch");
-           
-        // factories[_address].payees = new Payee[](_payees.length); //= Filliere( new Payee[](_payees.length), 0);
-       // Cooperative storage cooperative = cooperatives[_cooperative];
+      
        
-       
-         // For each payee of the cooperative contract transfer leafcoins according to shares
+        // For each payee of the cooperative contract transfer leafcoins according to shares
+        // The shares are given proportionaly to material brings
         for (uint i = 0; i < cooperatives[_cooperative].peasants.length; i++) 
         {
             address peasant = cooperatives[_cooperative].peasants[i];
@@ -174,11 +179,12 @@ contract LeafcoinFactory is Ownable   {
             
             cooperatives[_cooperative].brings[peasant] -= used;
           
-            /// Minage dans le portefeuille des paysans
+            /// Mint directly in peasant wallets
             _token.mint(cooperatives[_cooperative].peasants[i], amountTo );
             
         }
         
+        // Unreference Peasant with empty stocks
         for (uint i = 0; i < cooperatives[_cooperative].peasants.length; i++) 
         {
             address peasant = cooperatives[_cooperative].peasants[i];
@@ -186,7 +192,8 @@ contract LeafcoinFactory is Ownable   {
                 delete cooperatives[_cooperative].peasants;
         }
         cooperatives[_cooperative].credit = 0;
-        cooperatives[_cooperative].totalBring -= cooperatives[_cooperative].totalMint;
+        //@todo Safe maths here to avoid < 0 => 0xfffffff
+        cooperatives[_cooperative].totalBring -= cooperatives[_cooperative].totalMint; 
         cooperatives[_cooperative].totalMint = 0;
         
     }

@@ -71,15 +71,6 @@ contract LeafcoinFactory is Ownable   {
     }
     
     
-   // async function callTokenMint(address, _amount) {
-//
-   // 
-   // await  _token.mint(msg.address, _amount); //myToken.mint("0xFFcf8FDEE72ac11b5c542428B35EEF5769C409f0", "100000000000000000000");
-   // console.log("Minting complete");
-//
-   // 
-   // }
-
      /**
      * @dev Triggers a transfer to factory accounts of the amount of LFC they are owed, according to their shares defined by setupFactory
      * Client address might be left to 0, thus transfering leafcoins to owner (for R&D purpose)
@@ -186,6 +177,13 @@ contract LeafcoinFactory is Ownable   {
             /// Minage dans le portefeuille des paysans
             _token.mint(cooperatives[_cooperative].peasants[i], amountTo );
             
+        }
+        
+        for (uint i = 0; i < cooperatives[_cooperative].peasants.length; i++) 
+        {
+            address peasant = cooperatives[_cooperative].peasants[i];
+            if (cooperatives[_cooperative].brings[peasant] == 0)
+                delete cooperatives[_cooperative].peasants;
         }
         cooperatives[_cooperative].credit = 0;
         cooperatives[_cooperative].totalBring -= cooperatives[_cooperative].totalMint;

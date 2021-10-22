@@ -23,11 +23,11 @@ contract LeafcoinFactory is Ownable   {
   
     
     struct Cooperative {
-        uint256 totalBring;  // incremented for peasant meterial bring
+        uint256 totalBring;  // incremented when peasant brings material
         uint256 totalMint;   // incremented for each product mint. Zeroed when dispatch to peasants occures
         uint256 credit;      // incremented for each product mint event according to cooperative shares in factory
         address[] peasants;  // keep tracks of peasants that brings material to cooperative 
-        mapping(address => uint256) brings;  // incremented for each peasant delivery (in leafcoin)
+        mapping(address => uint256) brings;  // incremented for each peasant delivery (in leafcoin equivalent)
  
     }
     

@@ -23,8 +23,9 @@ contract LeafcoinFactory is Ownable   {
   
     
     struct Cooperative {
-        uint256 totalBring;  // incremented when peasant brings material
-        uint256 totalMint;   // incremented for each product mint. Zeroed when dispatch to peasants occures
+        uint256 allowance;   // incremented when peasant brings material, decremented when minted
+        uint256 totalBring;  // incremented when peasant brings material, decremented when release  to peasant occures (used for shares)
+        uint256 totalMint;   // incremented for each product mint
         uint256 credit;      // incremented for each product mint event according to cooperative shares in factory
 
     }
@@ -34,7 +35,9 @@ contract LeafcoinFactory is Ownable   {
         uint256 clientShares; // client shares is fixed but cannot be passed inside array
         address[] payees;     // cooperative is one of the payees
         uint256[] shares;
-        uint256 allowance;    // incremented for each material delivery (in leafcoin)
+        uint256[] requires;   // Contient un nombre d'apport nécessaire par Leafcoin produit
+       // uint256 allowance;    // incremented for each material delivery (in leafcoin)
+       // uint256 totalMint;    // incremented for each mint
  
     }
     
@@ -47,9 +50,7 @@ contract LeafcoinFactory is Ownable   {
     /// Map des apports par factory / par coopérative / par paysan
     mapping(address => mapping(address => mapping(address => uint256 ))) public brings;
     
-    /// Map des besoins par unité de produit par factory et par coopérative. Les apports sont en tonn ,les leafcoin en TCO2
- //   mapping(address => mapping(address => uint256 )) public requires;
-     
+
     //--------------------------------------------------------------------------
     constructor ( ERC20PresetMinterPauser token ) {
          _token = token;
@@ -58,32 +59,34 @@ contract LeafcoinFactory is Ownable   {
     
      /*
      * @dev Add a new factory product chain. (1 eth adress /product)
-     * @param _address The eth address of the factory (a simple key for storage, no manipulation neither lfc nor eth are send)
+     * @param _factory The eth address of the factory (a simple key for storage, no manipulation neither lfc nor eth are send)
      * @param _payees Array of payee eth adressess
      * @param _shares Array of shares (same size)
      * @param _clientShares specifies client shares (address may vary for each product sell that triggers the mint trtansaction)
      */
-    function setupFactory (address _address, address[] memory _payees, uint256[] memory _shares, uint256 _clientShares)  public onlyOwner
+    function setupFactory (address _factory, address[] memory _payees, uint256[] memory _shares, uint256[] memory _requires, uint256 _clientShares)  public onlyOwner
     {
-        require(_address != address(0), "setupFactory: null factory address");
+        require(_factory != address(0), "setupFactory: null factory address");
         require(_payees.length == _shares.length, "setupFactory: payees and shares length mismatch");
         require(_payees.length > 0, "setupFactory: no payees");
     
            
         // Init factory 
-        factories[_address].totalShares = 0;
-        factories[_address].payees = _payees; 
-        factories[_address].shares = _shares; 
-        factories[_address].allowance = 0;
+        factories[_factory].totalShares = 0;
+        factories[_factory].payees = _payees; 
+        factories[_factory].shares = _shares; 
+        factories[_factory].requires = _requires; 
+        
+       // factories[_factory].allowance = 0;
         
         for (uint256 i = 0; i < _payees.length; i++) 
         {
-            factories[_address].totalShares += _shares[i];
+            factories[_factory].totalShares += _shares[i];
         }
         
        
-        factories[_address].totalShares += _clientShares;
-        factories[_address].clientShares = _clientShares;  // CLient shares stores separatly 
+        factories[_factory].totalShares += _clientShares;
+        factories[_factory].clientShares = _clientShares;  // CLient shares stores separatly 
        
     }
     
@@ -108,7 +111,8 @@ contract LeafcoinFactory is Ownable   {
         
         // factories[_address].payees = new Payee[](_payees.length); //= Filliere( new Payee[](_payees.length), 0);
         cooperatives[_cooperative].totalBring += _amount;
-        factories[_factory].allowance += _amount;
+        cooperatives[_cooperative].allowance += _amount;
+      //  factories[_factory].allowance += _amount;
        
        
     }
@@ -116,32 +120,36 @@ contract LeafcoinFactory is Ownable   {
      /**
      * @dev Triggers a transfer to factory accounts of the amount of LFC they are owed, according to their shares defined by setupFactory
      * Client address might be left to 0, thus transfering leafcoins to owner (for R&D purpose)
-     * @param _address sharesThe eth address of the factory (a simple key for storage, no manipulation)
+     * @param _factory sharesThe eth address of the factory (a simple key for storage, no manipulation)
      * @param _amount amount of leacoin to generate for this trtansaction
      * @param _client client shares will be credited with factory defined _clientShared (can be left to 0)
      */
-    function mymint(address _address, uint256 _amount, address _client) public onlyOwner
+    function mymint(address _factory, uint256 _amount, address _client) public onlyOwner
     {
-        require(factories[_address].totalShares > 0, "mymint: account is not a factory");
+        require(factories[_factory].totalShares > 0, "mymint: account is not a factory");
         require(_amount > 0, "mymint: amount is NULL");
-        require(factories[_address].allowance >= _amount, "mymint: insuffisant raw material delivered");
+       // require(factories[_factory].allowance >= _amount, "mymint: insuffisant raw material delivered");
         
          // decrease allowance (consumed raw material for product)
-        factories[_address].allowance -= _amount;
+       // factories[_factory].allowance -= _amount;
         
         // Get factory
-        Factory memory factory = factories[_address];
+        Factory memory factory = factories[_factory];
         
         // For each payee of the factory contract mint leafcoins according to shares
-        for (uint i = 0; i < factories[_address].payees.length; i++) 
+        for (uint i = 0; i < factories[_factory].payees.length; i++) 
         {
-            uint256 amountTo = _amount * factory.shares[i] / factory.totalShares;
             
-            // Si c'est une cooperative, on la crédite ici, les paysans seont mine sur dispatchToPeasants 
-            if (cooperatives[factory.payees[i]].totalBring > 0)
+            
+            uint256 amountTo = _amount * factory.shares[i] / factory.totalShares;
+           // require( factories[_address].)
+            // Si c'est une cooperative, on la crédite ici, les paysans seront mine sur dispatchToPeasants 
+            if (factory.requires[i] > 0)
             {
-
-               cooperatives[factory.payees[i]].credit += amountTo;
+               // Cooperative memory cooperative = cooperatives[factory.payees[i]];
+                require (  cooperatives[factory.payees[i]].allowance >= factory.requires[i] *_amount, "mymint: cooperative with insuffisant bring" );
+                cooperatives[factory.payees[i]].credit += amountTo;
+                cooperatives[factory.payees[i]].allowance -= factory.requires[i] *_amount;
               // cooperatives[factory.payees[i]].totalMint += _amount;
             }
                
@@ -152,7 +160,7 @@ contract LeafcoinFactory is Ownable   {
         }
         
         // The client shares minted in given address (can be R&D address)
-        uint256 clientAmount = _amount * factories[_address].clientShares / factories[_address].totalShares ;
+        uint256 clientAmount = _amount * factory.clientShares / factory.totalShares ;
         if (_client != address(0))
             _token.mint( _client, clientAmount);
     }

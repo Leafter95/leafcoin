@@ -26,9 +26,7 @@ contract LeafcoinFactory is Ownable   {
         uint256 totalBring;  // incremented when peasant brings material
         uint256 totalMint;   // incremented for each product mint. Zeroed when dispatch to peasants occures
         uint256 credit;      // incremented for each product mint event according to cooperative shares in factory
-        address[] peasants;  // keep tracks of peasants that brings material to cooperative 
-        mapping(address => uint256) brings;  // incremented for each peasant delivery (in leafcoin equivalent)
- 
+
     }
     
     struct Factory {
@@ -40,10 +38,18 @@ contract LeafcoinFactory is Ownable   {
  
     }
     
-    
+    /// Map des factories (1 factory par produis labellisé)
     mapping(address => Factory) public factories;
+    
+    /// Map des coopératives (1 factory peut dépendre de plusieurs coopératives, 1 coopérative peut addresser plusieurs factory)
     mapping(address => Cooperative) public cooperatives;
-
+    
+    /// Map des apports par factory / par coopérative / par paysan
+    mapping(address => mapping(address => mapping(address => uint256 ))) public brings;
+    
+    /// Map des besoins par unité de produit par factory et par coopérative. Les apports sont en tonn ,les leafcoin en TCO2
+ //   mapping(address => mapping(address => uint256 )) public requires;
+     
     //--------------------------------------------------------------------------
     constructor ( ERC20PresetMinterPauser token ) {
          _token = token;
@@ -82,6 +88,31 @@ contract LeafcoinFactory is Ownable   {
     }
     
     
+     /*
+     * @dev Credit factory account with some CO2 sequestrated by delivered material (straw...)
+     * @param _peasant The eth address of the peasant 
+     * @param _cooperative The eth address of the cooperative 
+     * @param _factory The eth address of the factory 
+     * @param _amount amount of leafcoin mint allowance thanks to this delivery (representing  sequestrated carbon inside factory)
+     */
+    function bringMaterial (address _peasant, address _cooperative, address _factory, uint256 _amount)  public onlyOwner
+    {
+       
+        require(factories[_factory].totalShares > 0, "livraisonMatiere: unknown factory");
+        require(_peasant != address(0), "livraisonMatiere: invalid peasant address");
+        require(_cooperative != address(0), "livraisonMatiere: invalid cooperative address");
+        require(_factory != address(0), "livraisonMatiere: invalid factory address");
+        require(_amount > 0, "livraisonMatiere: amount = 0");
+           
+        brings[_factory][_cooperative][_peasant] += _amount;
+        
+        // factories[_address].payees = new Payee[](_payees.length); //= Filliere( new Payee[](_payees.length), 0);
+        cooperatives[_cooperative].totalBring += _amount;
+        factories[_factory].allowance += _amount;
+       
+       
+    }
+    
      /**
      * @dev Triggers a transfer to factory accounts of the amount of LFC they are owed, according to their shares defined by setupFactory
      * Client address might be left to 0, thus transfering leafcoins to owner (for R&D purpose)
@@ -111,7 +142,7 @@ contract LeafcoinFactory is Ownable   {
             {
 
                cooperatives[factory.payees[i]].credit += amountTo;
-               cooperatives[factory.payees[i]].totalMint += _amount;
+              // cooperatives[factory.payees[i]].totalMint += _amount;
             }
                
             // Sinon, on mine directement dans le portefeuille du beneficiaire
@@ -127,74 +158,41 @@ contract LeafcoinFactory is Ownable   {
     }
     
     
-      /*
-     * @dev Credit factory account with some CO2 sequestrated by delivered material (straw...)
-     * @param _peasant The eth address of the peasant 
-     * @param _cooperative The eth address of the cooperative 
-     * @param _factory The eth address of the factory 
-     * @param _amount amount of leafcoin mint allowance thanks to this delivery (representing  sequestrated carbon inside factory)
-     */
-    function bringMaterial (address _peasant, address _cooperative, address _factory, uint256 _amount)  public onlyOwner
-    {
-       
-        require(factories[_factory].totalShares > 0, "livraisonMatiere: unknown factory");
-        require(_peasant != address(0), "livraisonMatiere: invalid peasant address");
-        require(_cooperative != address(0), "livraisonMatiere: invalid cooperative address");
-        require(_amount > 0, "livraisonMatiere: amount = 0");
-           
-        // factories[_address].payees = new Payee[](_payees.length); //= Filliere( new Payee[](_payees.length), 0);
-        cooperatives[_cooperative].totalBring += _amount;
-        if ( cooperatives[_cooperative].brings[_peasant] == 0 )
-            cooperatives[_cooperative].peasants.push( _peasant);
-        cooperatives[_cooperative].brings[_peasant] += _amount;
-        factories[_factory].allowance += _amount;
-       
-       
-    }
+  
+   
     
-    /*
+     /*
      * @dev Dispatch cooperative credits to material bringers
      * @param _cooperative The eth address of the cooperative 
      */
-    function dispatchToPeasants (address _cooperative) public onlyOwner
+    function releaseToPeasant(address _factory, address _cooperative, address _peasant, uint256 _amount) public onlyOwner
     {
        
         // Note : this method must be called at the end of the season when every peasan has finish to bring materials
-        require(_cooperative != address(0), "dispatchToPeasants: invalid cooperative address");
-        require(cooperatives[_cooperative].totalBring > 0, "dispatchToPeasants: unknown cooperative");
-        require(cooperatives[_cooperative].totalMint > 0, "dispatchToPeasants: unknown cooperative");
+        require(_peasant != address(0), "releaseToPeasants: invalid peasant address");
+        require(brings[_factory][_cooperative][_peasant] > 0, "releaseToPeasants: peasant dee not bring anything to cooperative");
+        require(cooperatives[_cooperative].credit >= _amount, "dispatchToPeasants: insufficient cooperative credit");
         
         uint256 credit = cooperatives[_cooperative].credit;
         require(credit > 0,"dispatchToPeasants: cooperative balance = 0" );
       
-       
-        // For each payee of the cooperative contract transfer leafcoins according to shares
-        // The shares are given proportionaly to material brings
-        for (uint i = 0; i < cooperatives[_cooperative].peasants.length; i++) 
-        {
-            address peasant = cooperatives[_cooperative].peasants[i];
-            uint256 amountTo = credit * cooperatives[_cooperative].brings[peasant] / cooperatives[_cooperative].totalBring;
-            uint256 used = cooperatives[_cooperative].brings[peasant] * cooperatives[_cooperative].totalMint / cooperatives[_cooperative].totalBring;
-            
-            cooperatives[_cooperative].brings[peasant] -= used;
-          
-            /// Mint directly in peasant wallets
-            _token.mint(cooperatives[_cooperative].peasants[i], amountTo );
-            
-        }
+     
+        uint256 peasantBrings = brings[_factory][_cooperative][_peasant];
+        uint256 balance = credit * peasantBrings / cooperatives[_cooperative].totalBring;
+        require(_amount <= balance ,"releaseToPeasant: insuffisant balance" );
+         
+        uint256 usedMaterial = _amount * peasantBrings / balance; 
+      
         
-        // Unreference Peasant with empty stocks
-        for (uint i = 0; i < cooperatives[_cooperative].peasants.length; i++) 
-        {
-            address peasant = cooperatives[_cooperative].peasants[i];
-            if (cooperatives[_cooperative].brings[peasant] == 0)
-                delete cooperatives[_cooperative].peasants;
-        }
-        cooperatives[_cooperative].credit = 0;
-        //@todo Safe maths here to avoid < 0 => 0xfffffff
-        cooperatives[_cooperative].totalBring -= cooperatives[_cooperative].totalMint; 
-        cooperatives[_cooperative].totalMint = 0;
+        brings[_factory][_cooperative][_peasant] -= usedMaterial;
+        cooperatives[_cooperative].totalBring -= usedMaterial;
+        cooperatives[_cooperative].credit -= _amount;
+        cooperatives[_cooperative].totalMint += _amount;
+        /// Mint directly in peasant wallets
+        _token.mint(_peasant, _amount );
+            
+   
+        
         
     }
-    
 }

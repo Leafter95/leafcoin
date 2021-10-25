@@ -42,3 +42,12 @@ Cas simple 1 factory / 2 Cooperative / 3 paysans
 ["0xddC29f145272354A6a76f4d703C511be2C8b0725","0xBb2c0fC916e6EC57732B130bAb4882512Fb61582","0xceA97A7914c79A96601cd6FFA9D43E38e05a504B","0x60Ab5936e43418A69DA673d44d7A0517b67D5036"]
 [25,25,10,30]
 [10,5,0,0]
+
+
+* Déployer le contrat de leafcoin
+* Déployer le contrat de factory
+* Appeler la méthode grantRole sur le contrat leafcoin avec l'adresse du contrat de factory
+* SetupFactory avec les parametres du Test1
+* Minage Simple par un paysan 
+** BringMaterials 1000
+** Mint 100
